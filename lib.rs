@@ -19,6 +19,9 @@ mod burger_shop {
         orders_mapping: Mapping<u32, Order>,
     }
 
+    // TODO: add logic for payment to the shop
+    // TODO: add logic to calculate gas fees for user
+
     #[derive(Encode, Decode, Debug, Clone)]
     #[cfg_attr(
         feature = "std",
