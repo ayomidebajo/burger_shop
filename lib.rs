@@ -7,9 +7,7 @@ mod burger_shop {
     use ink::prelude::vec;
     use ink::prelude::vec::Vec;
     use ink::storage::Mapping;
-    use ink::env::hash::{HashOutput, Sha2x256, Blake2x256};
     use scale::{Decode, Encode};
-    use sp_io::hashing;
 
     /// Defines the storage of your contract.
     /// Add new fields to the below struct in order
