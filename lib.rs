@@ -17,6 +17,7 @@ mod burger_shop {
         /// Stores a single `bool` value on the storage.
         orders: Vec<(u32, Order)>,
         orders_mapping: Mapping<u32, Order>,
+        shop_owner: AccountId,
     }
 
     // TODO: add logic for payment to the shop
@@ -38,11 +39,22 @@ mod burger_shop {
         completed: bool,
     }
 
+    #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub enum Error {
+        /// Provide a detailed comment on the error
+        PaymentError,
+        OrderNotCompleted,
+    }
+
+    // result type
+    pub type Result<T> = core::result::Result<T, Error>;
+
     #[cfg_attr(
         feature = "std",
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
-    #[derive(Encode, Decode, Debug, Clone)]
+    #[derive(Encode, Decode, Debug, Clone, PartialEq, Eq)]
     pub enum Status {
         GettingIngredients,
         Preparing,
@@ -63,6 +75,7 @@ mod burger_shop {
             Self {
                 orders: vec![],
                 orders_mapping: list_of_orders,
+                shop_owner: Self::env().caller(),
             }
         }
 
@@ -88,11 +101,60 @@ mod burger_shop {
         }
 
         #[ink(message)]
-        pub fn mark_completed(&mut self, id: u32) {
+        pub fn mark_completed(&mut self, id: u32) -> Result<()> {
             let mut order = self.orders_mapping.get(id).expect("order not found!");
-            if order.paid {
-                order.completed = true
+            
+            assert!(order.completed == false, "Order already completed!");
+            assert!(order.paid == true, "Order not paid!");
+            assert!(order.delivered == true, "Order not delivered!");
+            assert!(order.status == Status::Delivered, "Order not delivered!");
+
+            if order.paid && order.delivered && order.status == Status::Delivered {
+                order.completed = true;
+                Ok(())
+            } else {
+                Err(Error::OrderNotCompleted)
             }
+        }
+
+        #[ink(message)]
+        pub fn make_payment(&mut self, id: u32) -> Result<()> {
+            let mut order = self.orders_mapping.get(id).expect("order not found!");
+            assert!(order.paid == false, "Order already paid!");
+
+            // ensure that sender is the caller
+            let caller = self.env().caller();
+            assert!(caller == order.customer, "You are not the customer!");
+
+            // ensure that the order is not completed
+            assert!(order.completed == false, "Order already completed!");
+
+            // ensure that the order is not delivered
+            assert!(order.delivered == false, "Order already delivered!");
+
+            // make payment
+            match self.env().transfer(self.shop_owner, order.price.into()) {
+                Ok(_) => {
+                    order.paid = true;
+                    order.status = Status::Preparing;
+                    Ok(())
+                }
+                Err(_) => Err(Error::PaymentError),
+            }
+        }
+
+        #[ink(message)]
+        pub fn change_status(&mut self, id: u32, status: Status) {
+            let mut order = self.orders_mapping.get(id).expect("order not found!");
+
+            // ensure caller is the shop owner
+            let caller = self.env().caller();
+            assert!(caller == self.shop_owner, "You are not the shop owner!");
+
+            // ensure that the order is not completed
+            assert!(order.completed == false, "Order already completed!");
+
+            order.status = status;
         }
     }
 
