@@ -20,7 +20,6 @@ mod burger_shop {
         shop_owner: AccountId,
     }
 
-    // TODO: add logic for payment to the shop
     // TODO: add logic to calculate gas fees for user
 
     #[derive(Encode, Decode, Debug, Clone)]
@@ -103,7 +102,7 @@ mod burger_shop {
         #[ink(message)]
         pub fn mark_completed(&mut self, id: u32) -> Result<()> {
             let mut order = self.orders_mapping.get(id).expect("order not found!");
-            
+
             assert!(order.completed == false, "Order already completed!");
             assert!(order.paid == true, "Order not paid!");
             assert!(order.delivered == true, "Order not delivered!");
@@ -173,13 +172,25 @@ mod burger_shop {
         // }
 
         // /// We test a simple use case of our contract.
-        // #[ink::test]
-        // fn it_works() {
-        //     let mut burger_shop = BurgerShop::new(false);
-        //     assert_eq!(burger_shop.get(), false);
-        //     burger_shop.flip();
-        //     assert_eq!(burger_shop.get(), true);
-        // }
+        #[ink::test]
+        fn it_works() {
+            let mut burger_shop = BurgerShop::new();
+            let order = Order {
+                burger_menu: "Cheese Burger".to_string(),
+                customer: AccountId::from([0x01; 32]),
+                price: 100,
+                amount: 1,
+                paid: false,
+                delivered: false,
+                status: Status::GettingIngredients,
+                completed: false,
+            };
+
+            burger_shop.new_order(order.clone());
+
+            let orders = burger_shop.get_orders();
+            assert_eq!(orders.len(), 1);
+        }
     }
 
     // / This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
