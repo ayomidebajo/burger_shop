@@ -83,13 +83,27 @@ mod burger_shop {
         /// to `false` and vice versa.
         #[ink(message)]
         pub fn get_orders(&self) -> Vec<(u32, Order)> {
+            // ensure the call is from the shop owner
+            let caller = self.env().caller();
+            assert!(caller == self.shop_owner, "You are not the shop owner!");
             self.orders.clone()
         }
 
         #[ink(message)]
         pub fn new_order(&mut self, order: Order) {
             let count = self.orders.len() as u32;
+            // ensure order is from the customer
+            let caller = self.env().caller();
+            assert!(caller == order.customer, "You are not the customer!");
+
+            // ensure that the order is not completed
+            assert!(
+                order.completed == false,
+                "Cant add an already completed order!"
+            );
+
             self.orders_mapping.insert(count, &order);
+
             self.orders.push((count, order));
         }
 
@@ -165,13 +179,7 @@ mod burger_shop {
         /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
-        // #[ink::test]
-        // fn default_works() {
-        //     let burger_shop = BurgerShop::default();
-        //     assert_eq!(burger_shop.get(), false);
-        // }
-
-        // /// We test a simple use case of our contract.
+        /// We test a simple use case of our contract.
         #[ink::test]
         fn it_works() {
             let mut burger_shop = BurgerShop::new();
