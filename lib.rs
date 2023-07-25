@@ -3,24 +3,17 @@
 #[ink::contract]
 mod burger_shop {
 
-    use ink::prelude::string::String;
-    use ink::prelude::vec;
     use ink::prelude::vec::Vec;
     use ink::storage::Mapping;
     use scale::{Decode, Encode};
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    // this is the main contract, this is what gets instantiated
     #[ink(storage)]
     pub struct BurgerShop {
-        /// Stores a single `bool` value on the storage.
         orders: Vec<(u32, Order)>,
         orders_mapping: Mapping<u32, Order>,
         shop_owner: AccountId,
     }
-
-    // TODO: add logic to calculate gas fees for user
 
     #[derive(Encode, Decode, Debug, Clone)]
     #[cfg_attr(
@@ -28,7 +21,7 @@ mod burger_shop {
         derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
     pub struct Order {
-        burger_menu: String,
+        burger_menu: BurgerMenu,
         customer: AccountId,
         price: u32,
         amount: u32,
@@ -38,12 +31,80 @@ mod burger_shop {
         completed: bool,
     }
 
+     #[derive(Encode, Decode, Debug, Clone)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
+    )]
+    pub enum BurgerMenu {
+        CheeseBurger,
+        ChickenBurger,
+        VeggieBurger,
+    }
+
+
+
+    impl Order {
+        pub fn new(
+            burger_menu: BurgerMenu,
+            customer: AccountId,
+            price: u32,
+            amount: u32,
+            paid: bool,
+            delivered: bool,
+            status: Status,
+            completed: bool,
+        ) -> Self {
+
+            let mut new_order = Order {
+                burger_menu,
+                customer,
+                price,
+                amount,
+                paid,
+                delivered,
+                status,
+                completed,
+            };
+
+           new_order.set_price();
+
+           new_order
+        }
+
+        pub fn get_burger_menu(&self) -> BurgerMenu {
+            self.burger_menu.clone()
+        }
+
+        fn set_price(&mut self)  {
+            match self.burger_menu {
+                BurgerMenu::CheeseBurger => self.price = 100,
+                BurgerMenu::ChickenBurger => self.price = 150,
+                BurgerMenu::VeggieBurger => self.price = 120,
+            }
+        }
+
+        pub fn get_price(&self) -> u32 {
+            self.price
+        }
+    }
+
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
-        /// Provide a detailed comment on the error
+        /// Errors types for different errors.
         PaymentError,
         OrderNotCompleted,
+    }
+
+     /// Event emitted when a token transfer occurs.
+    #[ink(event)]
+    pub struct Transfer {
+        #[ink(topic)]
+        from: Option<AccountId>,
+        #[ink(topic)]
+        to: Option<AccountId>,
+        value: Balance,
     }
 
     // result type
@@ -68,20 +129,20 @@ mod burger_shop {
     }
 
     impl BurgerShop {
-        #[ink(constructor)]
+        #[ink(constructor)] // this is the constructor, it gets called when the contract is instantiated
         pub fn new() -> Self {
             let list_of_orders = Mapping::new();
+            let new_vec = Vec::new();
             Self {
-                orders: vec![],
+                orders: new_vec,
                 orders_mapping: list_of_orders,
                 shop_owner: Self::env().caller(),
             }
         }
 
         /// A message that can be called on instantiated contracts.
-        /// This one flips the value of the stored `bool` from `true`
-        /// to `false` and vice versa.
-        #[ink(message)]
+        /// This one gets the value of the `message` state value.
+        #[ink(message)] // this get after the contract is instantiated, it can be called multiple times
         pub fn get_orders(&self) -> Vec<(u32, Order)> {
             // ensure the call is from the shop owner
             let caller = self.env().caller();
@@ -171,20 +232,15 @@ mod burger_shop {
         }
     }
 
-    /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
-    /// module and test functions are marked with a `#[test]` attribute.
-    /// The below code is technically just normal Rust code.
     #[cfg(test)]
     mod tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
         use super::*;
 
-        /// We test a simple use case of our contract.
         #[ink::test]
         fn it_works() {
             let mut burger_shop = BurgerShop::new();
             let order = Order {
-                burger_menu: "Cheese Burger".to_string(),
+                burger_menu: BurgerMenu::CheeseBurger,
                 customer: AccountId::from([0x01; 32]),
                 price: 100,
                 amount: 1,
@@ -199,77 +255,76 @@ mod burger_shop {
             let orders = burger_shop.get_orders();
             assert_eq!(orders.len(), 1);
         }
+
+        #[ink::test]
+        fn test_make_payment() {
+            let mut burger_shop = BurgerShop::new();
+            let order = Order {
+                burger_menu: BurgerMenu::CheeseBurger,
+                customer: AccountId::from([0x01; 32]),
+                price: 100,
+                amount: 1,
+                paid: false,
+                delivered: false,
+                status: Status::GettingIngredients,
+                completed: false,
+            };
+
+            burger_shop.new_order(order.clone());
+
+            burger_shop.make_payment(0).unwrap();
+
+            let orders = burger_shop.get_orders();
+            assert_eq!(orders.len(), 1);
+            assert_eq!(orders[0].1.paid, true);
+        }
+        #[ink::test]
+        fn test_change_status() {
+            let mut burger_shop = BurgerShop::new();
+            let order = Order {
+                burger_menu: BurgerMenu::CheeseBurger,
+                customer: AccountId::from([0x01; 32]),
+                price: 100,
+                amount: 1,
+                paid: false,
+                delivered: false,
+                status: Status::GettingIngredients,
+                completed: false,
+            };
+
+            burger_shop.new_order(order.clone());
+            let orders = burger_shop.get_orders();
+            assert_eq!(orders.len(), 1);
+            burger_shop.change_status(0, Status::Preparing);
+
+            assert_eq!(orders[0].1.status, Status::Preparing);
+        }
+
+        #[ink::test]
+        fn test_mark_completed() {
+            let mut burger_shop = BurgerShop::new();
+            let order = Order {
+                burger_menu: BurgerMenu::CheeseBurger,
+                customer: AccountId::from([0x01; 32]),
+                price: 100,
+                amount: 1,
+                paid: false,
+                delivered: false,
+                status: Status::GettingIngredients,
+                completed: false,
+            };
+
+            burger_shop.new_order(order.clone());
+
+            burger_shop.make_payment(0).unwrap();
+            burger_shop.change_status(0, Status::Preparing);
+            burger_shop.change_status(0, Status::SentForDelivery);
+            burger_shop.change_status(0, Status::Delivered);
+            burger_shop.mark_completed(0).unwrap();
+
+            let orders = burger_shop.get_orders();
+            assert_eq!(orders.len(), 1);
+            assert_eq!(orders[0].1.completed, true);
+        }
     }
-
-    // / This is how you'd write end-to-end (E2E) or integration tests for ink! contracts.
-    // /
-    // / When running these you need to make sure that you:
-    // / - Compile the tests with the `e2e-tests` feature flag enabled (`--features e2e-tests`)
-    // / - Are running a Substrate node which contains `pallet-contracts` in the background
-    // #[cfg(all(test, feature = "e2e-tests"))]
-    // mod e2e_tests {
-    //     /// Imports all the definitions from the outer scope so we can use them here.
-    //     use super::*;
-
-    //     /// A helper function used for calling contract messages.
-    //     use ink_e2e::build_message;
-
-    //     /// The End-to-End test `Result` type.
-    //     type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-    //     /// We test that we can upload and instantiate the contract using its default constructor.
-    //     #[ink_e2e::test]
-    //     async fn default_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-    //         // Given
-    //         let constructor = BurgerShopRef::default();
-
-    //         // When
-    //         let contract_account_id = client
-    //             .instantiate("burger_shop", &ink_e2e::alice(), constructor, 0, None)
-    //             .await
-    //             .expect("instantiate failed")
-    //             .account_id;
-
-    //         // Then
-    //         let get = build_message::<BurgerShopRef>(contract_account_id.clone())
-    //             .call(|burger_shop| burger_shop.get());
-    //         let get_result = client.call_dry_run(&ink_e2e::alice(), &get, 0, None).await;
-    //         assert!(matches!(get_result.return_value(), false));
-
-    //         Ok(())
-    //     }
-
-    //     /// We test that we can read and write a value from the on-chain contract contract.
-    //     #[ink_e2e::test]
-    //     async fn it_works(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
-    //         // Given
-    //         let constructor = BurgerShopRef::new(false);
-    //         let contract_account_id = client
-    //             .instantiate("burger_shop", &ink_e2e::bob(), constructor, 0, None)
-    //             .await
-    //             .expect("instantiate failed")
-    //             .account_id;
-
-    //         let get = build_message::<BurgerShopRef>(contract_account_id.clone())
-    //             .call(|burger_shop| burger_shop.get());
-    //         let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-    //         assert!(matches!(get_result.return_value(), false));
-
-    //         // When
-    //         let flip = build_message::<BurgerShopRef>(contract_account_id.clone())
-    //             .call(|burger_shop| burger_shop.flip());
-    //         let _flip_result = client
-    //             .call(&ink_e2e::bob(), flip, 0, None)
-    //             .await
-    //             .expect("flip failed");
-
-    //         // Then
-    //         let get = build_message::<BurgerShopRef>(contract_account_id.clone())
-    //             .call(|burger_shop| burger_shop.get());
-    //         let get_result = client.call_dry_run(&ink_e2e::bob(), &get, 0, None).await;
-    //         assert!(matches!(get_result.return_value(), true));
-
-    //         Ok(())
-    //     }
-    // }
 }
