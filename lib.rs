@@ -25,7 +25,6 @@ pub mod burger_shop {
         customer: AccountId,
         total_price: Balance,
         paid: bool,
-        status: Status,
         order_id: u32,
     }
 
@@ -37,8 +36,7 @@ pub mod burger_shop {
                 customer,
                 total_price,
                 paid: false,
-                order_id: id,
-                status: Default::default(), // Default is "getting ingredients" in this case
+                order_id: id, // Default is "getting ingredients" in this case
             }
         }
 
@@ -114,27 +112,11 @@ pub mod burger_shop {
         value: Balance,
     }
 
-    /// Event when the shop owner changes the status of an order
-    #[ink(event)]
-    pub struct ChangeStatus {
-        #[ink(topic)]
-        previous: BurgerMenu,
-        #[ink(topic)]
-        current: BurgerMenu,
-    }
-
     /// Event when shop owner get all orders in storage
     #[ink(event)]
     pub struct GetAllOrders {
         #[ink(topic)]
         orders: Vec<(u32, Order)>,
-    }
-
-    /// Event when shop owner gets balance
-    #[ink(event)]
-    pub struct GetContractBalance {
-        #[ink(topic)]
-        balance: Balance,
     }
 
     /// Event when shop owner gets a single order
@@ -153,25 +135,6 @@ pub mod burger_shop {
 
     // result type
     pub type Result<T> = core::result::Result<T, BurgerShopError>;
-
-    /// Status for each order
-    #[cfg_attr(
-        feature = "std",
-        derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
-    )]
-    #[derive(Encode, Decode, Debug, Clone, PartialEq, Eq)]
-    pub enum Status {
-        GettingIngredients,
-        Preparing,
-        SentForDelivery,
-        Delivered,
-    }
-
-    impl Default for Status {
-        fn default() -> Self {
-            Status::GettingIngredients
-        }
-    }
 
     /// Implementing the contract
     impl BurgerShop {
@@ -199,6 +162,11 @@ pub mod burger_shop {
                 "You are not the customer!"
             );
 
+            // assert the order contains at least 1 item
+            for item in &list_of_items {
+                assert!(item.amount > 0, "Can't take an empty order")
+            }
+
             // our own local id, you can change this to a hash if you want, but remember to make the neccessary type changes too!
             let id = self.orders.len() as u32;
 
@@ -218,12 +186,6 @@ pub mod burger_shop {
                 "You are not the customer!"
             );
 
-            // make sure the status is still default
-            assert!(
-                order.status == Status::GettingIngredients,
-                "invalid order, this is already in progress or already completed"
-            );
-
             // make payment
             match self
                 .env()
@@ -232,8 +194,7 @@ pub mod burger_shop {
                 Ok(_) => {
                     // get current length of the list orders in storage, this will act as our unique id
                     let id = self.orders.len() as u32;
-                    // change order status
-                    order.status = Status::Preparing;
+                    // mark order as paid
                     order.paid = true;
 
                     // Emit event
@@ -253,38 +214,8 @@ pub mod burger_shop {
         }
 
         #[ink(message)]
-        /// Change the status
-        pub fn change_status(&mut self, id: u32, status: Status) -> Status {
-            let mut get_order = self
-                .orders_mapping
-                .get(id)
-                .expect("Oh no, Order not found!");
-
-            // assert that the order has already been paid for
-            assert!(
-                get_order.paid,
-                "Can't change status for an unpaid order, according to boss orders"
-            );
-
-            // change status
-            get_order.status = status;
-
-            // replace the old order with the updated one
-            self.orders_mapping.insert(id, &get_order);
-
-            get_order.status
-        }
-
-        #[ink(message)]
         // gets a single order from storage
         pub fn get_single_order(&self, id: u32) -> Order {
-            // assert the caller is the shop owner
-            let caller = self.env().caller();
-            assert!(
-                caller == self.env().account_id(),
-                "You're not the shop owner"
-            );
-
             // get single order
             let single_order = self.orders_mapping.get(id).expect("Oh no, Order not found");
 
@@ -293,31 +224,15 @@ pub mod burger_shop {
 
         #[ink(message)]
         // gets the orders in storage
-        pub fn get_orders(&self) -> Vec<(u32, Order)> {
-            // assert the caller is the shop owner
-            let caller = self.env().caller();
-            assert!(
-                caller == self.env().account_id(),
-                "You're not the shop owner"
-            );
-
+        pub fn get_orders(&self) -> Option<Vec<(u32, Order)>> {
             // Get all orders
             let get_all_orders = &self.orders;
 
-            get_all_orders.to_vec() // converts ref to an owned/new vector
-        }
-
-        #[ink(message)]
-        // gets balance of the contract owner
-        pub fn get_balance(&self) -> Balance {
-            // assert the caller is the contract owner
-            let caller = self.env().caller();
-            assert!(
-                caller == self.env().account_id(),
-                "You're not the shop owner"
-            );
-
-            self.env().balance()
+            if get_all_orders.len() > 0 {
+                Some(get_all_orders.to_vec()) // converts ref to an owned/new vector
+            } else {
+                None
+            }
         }
     }
 }
