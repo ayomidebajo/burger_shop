@@ -86,9 +86,9 @@ pub mod burger_shop {
     impl BurgerMenu {
         fn price(&self) -> Balance {
             match self {
-                Self::CheeseBurger => 120,
-                Self::VeggieBurger => 100,
-                Self::ChickenBurger => 150,
+                Self::CheeseBurger => 12,
+                Self::VeggieBurger => 10,
+                Self::ChickenBurger => 15,
             }
         }
     }
@@ -152,7 +152,7 @@ pub mod burger_shop {
 
         /// takes the order and makes the payment, we aren't implementing cart feature here for simplicity purposes, ideally the cart feature should be implemented in the frontend
         #[ink(message, payable)]
-        pub fn take_order_and_payment(&mut self, list_of_items: Vec<FoodItem>) -> Result<()> {
+        pub fn take_order_and_payment(&mut self, list_of_items: Vec<FoodItem>) -> Result<Order> {
             // Gets the caller account id
             let caller = Self::env().caller();
 
@@ -180,11 +180,19 @@ pub mod burger_shop {
                 "Can't pay for an order that is paid for already"
             );
 
-            // makes sure the caller isn't the shop owner
+            let multiply: Balance = 1_000_000_000_000;
+            let transfered_val = self.env().transferred_value();
+
+            // assert the value sent == total price
             assert!(
-                caller != self.env().account_id(),
-                "You are not the customer!"
+                transfered_val
+                    == order
+                        .total_price
+                        .checked_mul(multiply)
+                        .expect("Overflow!!!"),
+                "Please pay complete amount"
             );
+            ink::env::debug_println!("received payment: {}", transfered_val);
 
             // make payment
             match self
@@ -206,15 +214,15 @@ pub mod burger_shop {
 
                     // Push to storage
                     self.orders_mapping.insert(id, &order);
-                    self.orders.push((id, order));
-                    Ok(())
+                    self.orders.push((id, order.clone()));
+                    Ok(order)
                 }
                 Err(_) => Err(BurgerShopError::PaymentError),
             }
         }
 
         #[ink(message)]
-        // gets a single order from storage
+        /// gets a single order from storage
         pub fn get_single_order(&self, id: u32) -> Order {
             // get single order
             let single_order = self.orders_mapping.get(id).expect("Oh no, Order not found");
@@ -223,7 +231,7 @@ pub mod burger_shop {
         }
 
         #[ink(message)]
-        // gets the orders in storage
+        /// gets the orders in storage
         pub fn get_orders(&self) -> Option<Vec<(u32, Order)>> {
             // Get all orders
             let get_all_orders = &self.orders;
