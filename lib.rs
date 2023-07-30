@@ -2,10 +2,13 @@
 
 #[ink::contract]
 pub mod burger_shop {
-
+    extern crate alloc;
+    // use alloc::fmt::format;
     use ink::prelude::vec::Vec;
+    use ink::prelude::format;
     use ink::storage::Mapping;
     use scale::{Decode, Encode};
+   
 
     // this is the main contract, this is what gets instantiated
     #[ink(storage)]
@@ -180,7 +183,7 @@ pub mod burger_shop {
                 "Can't pay for an order that is paid for already"
             );
 
-            let multiply: Balance = 1_000_000_000_000;
+            let multiply: Balance = 1_000_000_000_000; // this equals to 1 Azero, so we doing some conversion
             let transfered_val = self.env().transferred_value();
 
             // assert the value sent == total price
@@ -190,9 +193,17 @@ pub mod burger_shop {
                         .total_price
                         .checked_mul(multiply)
                         .expect("Overflow!!!"),
-                "Please pay complete amount"
+                "{}", format!("Please pay complete amount which is {}", order.total_price)
             );
-            ink::env::debug_println!("received payment: {}", transfered_val);
+
+            ink::env::debug_println!(
+                "Expected value: {}",
+                order.total_price
+            );
+            ink::env::debug_println!(
+                "Expected received payment without conversion: {}",
+                transfered_val
+            );  // we are printing the expected value as is
 
             // make payment
             match self
